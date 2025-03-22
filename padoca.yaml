@@ -1,0 +1,165 @@
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^2.10.0
+  firebase_auth: ^3.3.10
+  cloud_firestore: ^3.1.10
+  provider: ^6.0.2
+  import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Bruno Pães Artesanais',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: LoginScreen(),
+    );
+  }
+}
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'home_screen.dart';
+
+class LoginScreen extends StatefulWidget {
+  @override
+  _LoginScreenState createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  Future<void> _login() async {
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => HomeScreen()),
+      );
+    } catch (e) {
+      print('Login failed: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Login')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _emailController,
+              decoration: InputDecoration(labelText: 'Email'),
+            ),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: InputDecoration(labelText: 'Password'),
+            ),
+            ElevatedButton(
+              onPressed: _login,
+              child: Text('Login'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+
+class HomeScreen extends StatefulWidget {
+  @override
+  _HomeScreenState createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final TextEditingController _productController = TextEditingController();
+
+  // Adicionar produto ao Firestore
+  Future<void> _addProduct() async {
+    if (_productController.text.isNotEmpty) {
+      await FirebaseFirestore.instance.collection('products').add({
+        'name': _productController.text,
+        'stock': 10, // Exemplo de estoque inicial
+      });
+      _productController.clear();
+    }
+  }
+
+  // Registrar venda
+  Future<void> _sellProduct(String productId) async {
+    final productDoc = FirebaseFirestore.instance.collection('products').doc(productId);
+    final productSnapshot = await productDoc.get();
+    if (productSnapshot.exists) {
+      final productData = productSnapshot.data();
+      int stock = productData?['stock'] ?? 0;
+      if (stock > 0) {
+        await productDoc.update({'stock': stock - 1});
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Controle de Produtos e Vendas')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _productController,
+              decoration: InputDecoration(labelText: 'Nome do Produto'),
+            ),
+            ElevatedButton(
+              onPressed: _addProduct,
+              child: Text('Adicionar Produto'),
+            ),
+            Expanded(
+              child: StreamBuilder(
+                stream: FirebaseFirestore.instance.collection('products').snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+                  var products = snapshot.data!.docs;
+                  return ListView.builder(
+                    itemCount: products.length,
+                    itemBuilder: (context, index) {
+                      var product = products[index];
+                      return ListTile(
+                        title: Text(product['name']),
+                        subtitle: Text('Estoque: ${product['stock']}'),
+                        trailing: IconButton(
+                          icon: Icon(Icons.sell),
+                          onPressed: () => _sellProduct(product.id),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
